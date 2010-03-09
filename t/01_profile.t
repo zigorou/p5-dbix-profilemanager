@@ -92,10 +92,10 @@ subtest 'multi db handle and multi path' => sub {
     is( $dbh1->{Profile}, undef, 'dbh1 Profile parameter is undef' );
     is( $dbh2->{Profile}, undef, 'dbh2 Profile parameter is undef' );
 
-    my $pm = DBIx::ProfileManager->new( config => '!Statement:!File' );
+    my $pm = DBIx::ProfileManager->new( config => '!Statement:!MethodName' );
     $pm->profile_start;
 
-    is_deeply( $pm->path, [ qw/!Statement !File/ ], 'path attr' );
+    is_deeply( $pm->path, [ qw/!Statement !MethodName/ ], 'path attr' );
     
     isa_ok( $dbh1->{Profile}, 'DBI::Profile' );
     isa_ok( $dbh2->{Profile}, 'DBI::Profile' );
@@ -161,12 +161,14 @@ subtest 'multi db handle and multi path' => sub {
         'insert sql is existed in profile data'
     );
 
-    my @results = $pm->data_formatted( '%{statement}' );
+    my @structured_data =
+        grep { $_->{method_name} =~ m/^(do|execute|fetch|select)/; }
+        $pm->data_structured;
+
+    my @results = $pm->data_formatted( '%{statement}', @structured_data );
 
     is( @results, 5, 'executed queries' );
 
-    note(explain(\@results));
-    
     is_deeply( [ sort { $a cmp $b } @results ], [
         $sql{create_table_bar},
         $sql{create_table_foo},

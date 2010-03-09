@@ -3,16 +3,18 @@ package DBIx::ProfileManager;
 use strict;
 use warnings;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use DBI;
 use DBI::Profile;
+use Hook::WrapSub qw(wrap_subs unwrap_subs);
+use Scalar::Util qw(weaken);
 
 sub new {
     my ( $class, %args ) = @_;
     bless +{
         config => $args{config} || '!Statement',
-        data => [],
+        data => +{},
         path => [],
         is_started => 0,
     } => $class;
@@ -34,14 +36,47 @@ sub new {
 
 sub profile_start {
     my ( $self, @db_handles ) = @_;
-    @db_handles = $self->_active_db_handles unless ( @db_handles > 0 );
+
     my $config = $self->config;
-    for my $dbh (@db_handles) {
-        $dbh->{Profile} = $config;
+
+    unless ( @db_handles > 0 ) {
+        @db_handles = $self->_active_db_handles;
+        $ENV{DBI_PROFILE} = $config;
     }
-    if ( $db_handles[0] ) {
-        $self->path($db_handles[0]->{Profile}{Path});
+    
+    if ( @db_handles > 0 ) {
+        for my $dbh (@db_handles) {
+            $dbh->{Profile} = $config;
+        }
+        if ( $db_handles[0] ) {
+            $self->path($db_handles[0]->{Profile}{Path});
+        }
     }
+
+    $self->data(+{});
+    $self->path( [ split(':', $config) ] ) if ( @{$self->path} == 0 );
+
+    {
+        no strict 'refs';
+
+        my $pfm = $self;
+        weaken( $pfm );
+
+        my $cb = sub {
+            my $dbh = shift;
+            $pfm->_fetch_profile_data($dbh);
+        };
+
+        unless ( exists $DBI::db::{DESTROY} ) {
+            *DBI::db::DESTROY = $cb;
+        }
+        else {
+            wrap_subs $cb, 'DBI::db::disconnect';
+        }
+
+        wrap_subs $cb, 'DBI::db::disconnect';
+    };
+    
     $self->is_started(1);
 }
 
@@ -49,15 +84,16 @@ sub profile_stop {
     my $self = shift;
     return unless ($self->is_started);
     my @db_handles = $self->_active_db_handles;
-    my %data;
 
+    delete $ENV{DBI_PROFILE};
+    delete $DBI::db::{DESTROY};
+    
     for my $dbh (@db_handles) {
-        $data{ sprintf( 'dbi:%s:%s', $dbh->{Driver}{Name}, $dbh->{Name} ) } =
-          +{ map { $_ => $dbh->{Profile}{Data}{$_} }
-              grep { length $_ } keys %{ $dbh->{Profile}{Data} } };
-        $dbh->{Profile}{Data} = undef;
+        $self->_fetch_profile_data( $dbh );
     }
-    $self->data( \%data );
+
+    unwrap_subs 'DBI::db::disconnect';
+    
     $self->is_started(0);
 }
 
@@ -89,6 +125,21 @@ sub data_structured {
     }
 
     return wantarray ? @results : \@results;
+}
+
+sub _fetch_profile_data {
+    my ( $self, $dbh ) = @_;
+
+    return unless ( exists $dbh->{Profile} && defined $dbh->{Profile}{Data} );
+    my $dsn = sprintf( 'dbi:%s:%s', $dbh->{Driver}{Name}, $dbh->{Name} );
+    return if ( exists $self->data->{$dsn} );
+    
+    $self->data->{$dsn}
+      = +{
+        map { $_ => $dbh->{Profile}{Data}{$_} }
+        grep { length $_ } keys %{ $dbh->{Profile}{Data} }
+      };
+    $dbh->{Profile}{Data} = undef;
 }
 
 sub _active_db_handles {

@@ -4,6 +4,8 @@ all_from 'lib/DBIx/ProfileManager.pm';
 
 requires 'DBI';
 requires 'DBI::Profile';
+requires 'Hook::WrapSub';
+requires 'Scalar::Util';
 
 recommends 'File::Temp';
 recommends 'DBD::SQLite';
