@@ -7,6 +7,8 @@ requires 'DBI::Profile';
 requires 'Hook::WrapSub';
 requires 'Scalar::Util';
 
+build_requires 'Test::Requires';
+
 recommends 'File::Temp';
 recommends 'DBD::SQLite';
 

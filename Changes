@@ -1,4 +1,8 @@
 Revision history for Perl extension DBIx::ProfileManager
 
+0.02    Web Mar 10 13:19:47 2010
+        - apply profiling created db handles after profile_start()
+        - fetch profiled data on disconnect or DESTROY of DBI::db
+
 0.01    Wed Feb 24 17:50:57 2010
         - original version
