@@ -4,7 +4,6 @@ all_from 'lib/DBIx/ProfileManager.pm';
 
 requires 'DBI';
 requires 'DBI::Profile';
-requires 'Hook::WrapSub';
 requires 'Scalar::Util';
 
 build_requires 'Test::Requires';

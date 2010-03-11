@@ -3,12 +3,13 @@ package DBIx::ProfileManager;
 use strict;
 use warnings;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use DBI;
 use DBI::Profile;
-use Hook::WrapSub qw(wrap_subs unwrap_subs);
 use Scalar::Util qw(weaken);
+
+our %ORIGINAL_METHODS;
 
 sub new {
     my ( $class, %args ) = @_;
@@ -58,6 +59,7 @@ sub profile_start {
 
     {
         no strict 'refs';
+        no warnings 'redefine';
 
         my $pfm = $self;
         weaken( $pfm );
@@ -70,11 +72,13 @@ sub profile_start {
         unless ( exists $DBI::db::{DESTROY} ) {
             *DBI::db::DESTROY = $cb;
         }
-        else {
-            wrap_subs $cb, 'DBI::db::disconnect';
-        }
 
-        wrap_subs $cb, 'DBI::db::disconnect';
+        $ORIGINAL_METHODS{disconnect} = \&DBI::db::disconnect;
+        *DBI::db::disconnect = sub {
+            my $dbh = shift;
+            $cb->($dbh);
+            $ORIGINAL_METHODS{disconnect}->($dbh);
+        };
     };
     
     $self->is_started(1);
@@ -92,7 +96,10 @@ sub profile_stop {
         $self->_fetch_profile_data( $dbh );
     }
 
-    unwrap_subs 'DBI::db::disconnect';
+    {
+        no warnings 'redefine';
+        *DBI::db::disconnect = $ORIGINAL_METHODS{disconnect};
+    };
     
     $self->is_started(0);
 }
